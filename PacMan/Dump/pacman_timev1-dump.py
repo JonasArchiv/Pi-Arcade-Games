@@ -6,11 +6,9 @@ import time
 pygame.init()
 
 # Screen dimensions
-small_screen_size = (800, 600)  # 8.5x15.5 cm screen
-large_screen_size = (1920, 1080)  # 43 inch screen
-
-# Set the size based on your choice
-screen_size = large_screen_size  # Change to small_screen_size for the smaller screen
+small_screen_size = (800, 600)
+large_screen_size = (1920, 1080)
+screen_size = large_screen_size
 
 screen = pygame.display.set_mode(screen_size)
 pygame.display.set_caption("Pac-Man")
@@ -38,7 +36,8 @@ lives = initial_lives
 font = pygame.font.Font(None, 36)
 
 # Time tracking
-start_time = time.time()
+start_time = 0
+current_time = 0  # Current elapsed time
 times = []
 attempts = []
 
@@ -46,7 +45,7 @@ attempts = []
 times_file = "times.txt"
 
 def reset_positions():
-    global pacman_x, pacman_y, ghosts, start_time
+    global pacman_x, pacman_y, ghosts, start_time, current_time
     pacman_x = screen_size[0] // 2
     pacman_y = screen_size[1] // 2
     ghosts = [
@@ -54,21 +53,27 @@ def reset_positions():
         for _ in range(4)
     ]
     start_time = time.time()
+    current_time = 0
 
 def load_times():
     try:
         with open(times_file, "r") as file:
             times = [float(line.strip()) for line in file.readlines()]
-            times.sort()
-            return times
+            times.sort(reverse=True)  # Sort in descending order
+            return times[:5]  # Return only the top 5 times
     except FileNotFoundError:
         return []
 
 def save_time(new_time):
+    with open(times_file, "a") as file:
+        file.write(f"{new_time}\n")
+    # Update global times list
     times.append(new_time)
-    times.sort()
+    times.sort(reverse=True)  # Sort in descending order
+
+    # Save sorted times back to file
     with open(times_file, "w") as file:
-        for t in times[:3]:
+        for t in times:
             file.write(f"{t}\n")
 
 def draw_button(text, position, size, color, hover_color, click):
@@ -96,11 +101,44 @@ if pygame.joystick.get_count() > 0:
     joystick = pygame.joystick.Joystick(0)
     joystick.init()
 
-# Function to check for collisions between ghosts
 def is_collision(x1, y1, x2, y2, size):
     return abs(x1 - x2) < size and abs(y1 - y2) < size
 
-# Main game loop
+def move_ghosts():
+    for ghost in ghosts:
+        potential_positions = [
+            (ghost["x"] + ghost_speed, ghost["y"]),
+            (ghost["x"] - ghost_speed, ghost["y"]),
+            (ghost["x"], ghost["y"] + ghost_speed),
+            (ghost["x"], ghost["y"] - ghost_speed)
+        ]
+        potential_positions.sort(key=lambda pos: (abs(pos[0] - pacman_x) + abs(pos[1] - pacman_y)))
+
+        moved = False
+        for pos in potential_positions:
+            collision = False
+            for other_ghost in ghosts:
+                if other_ghost != ghost and is_collision(pos[0], pos[1], other_ghost["x"], other_ghost["y"], ghost_size):
+                    collision = True
+                    break
+            if not collision:
+                ghost["x"], ghost["y"] = pos
+                moved = True
+                break
+
+        if not moved:
+            for _ in range(10):
+                random_pos = (ghost["x"] + random.choice([-ghost_speed, ghost_speed]),
+                              ghost["y"] + random.choice([-ghost_speed, ghost_speed]))
+                collision = False
+                for other_ghost in ghosts:
+                    if other_ghost != ghost and is_collision(random_pos[0], random_pos[1], other_ghost["x"], other_ghost["y"], ghost_size):
+                        collision = True
+                        break
+                if not collision:
+                    ghost["x"], ghost["y"] = random_pos
+                    break
+
 running = True
 game_over = False
 clock = pygame.time.Clock()
@@ -111,7 +149,6 @@ while running:
             running = False
 
     if not game_over:
-        # Movement
         keys = pygame.key.get_pressed()
         if joystick:
             x_axis = joystick.get_axis(0)
@@ -134,102 +171,51 @@ while running:
             if keys[pygame.K_DOWN]:
                 pacman_y += pacman_speed
 
-        # Prevent Pac-Man from going off-screen
         pacman_x = max(0, min(pacman_x, screen_size[0] - pacman_size))
         pacman_y = max(0, min(pacman_y, screen_size[1] - pacman_size))
 
-        # Ghost movement with collision avoidance
-        for ghost in ghosts:
-            potential_positions = [
-                (ghost["x"] + ghost_speed, ghost["y"]),  # Right
-                (ghost["x"] - ghost_speed, ghost["y"]),  # Left
-                (ghost["x"], ghost["y"] + ghost_speed),  # Down
-                (ghost["x"], ghost["y"] - ghost_speed)   # Up
-            ]
+        move_ghosts()  # Move ghosts towards the player and handle collisions
 
-            # Prioritize moving towards Pac-Man
-            potential_positions.sort(key=lambda pos: (abs(pos[0] - pacman_x) + abs(pos[1] - pacman_y)))
-
-            moved = False
-            for pos in potential_positions:
-                collision = False
-                for other_ghost in ghosts:
-                    if other_ghost != ghost and is_collision(pos[0], pos[1], other_ghost["x"], other_ghost["y"], ghost_size):
-                        collision = True
-                        break
-                if not collision:
-                    ghost["x"], ghost["y"] = pos
-                    moved = True
-                    break
-
-            if not moved:
-                # Attempt to move to random position if stuck
-                for _ in range(10):  # try up to 10 random moves
-                    random_pos = (ghost["x"] + random.choice([-ghost_speed, ghost_speed]),
-                                  ghost["y"] + random.choice([-ghost_speed, ghost_speed]))
-                    collision = False
-                    for other_ghost in ghosts:
-                        if other_ghost != ghost and is_collision(random_pos[0], random_pos[1], other_ghost["x"], other_ghost["y"], ghost_size):
-                            collision = True
-                            break
-                    if not collision:
-                        ghost["x"], ghost["y"] = random_pos
-                        break
-
-        # Prevent ghosts from going off-screen
         for ghost in ghosts:
             ghost["x"] = max(0, min(ghost["x"], screen_size[0] - ghost_size))
             ghost["y"] = max(0, min(ghost["y"], screen_size[1] - ghost_size))
 
-        # Check for collisions between Pac-Man and ghosts
         for ghost in ghosts:
             if is_collision(pacman_x, pacman_y, ghost["x"], ghost["y"], pacman_size):
                 lives -= 1
-                end_time = time.time()
-                survival_time = round(end_time - start_time, 2)
-                attempts.append(survival_time)
-                if lives > 0:
-                    reset_positions()
-                else:
-                    save_time(survival_time)
+                reset_positions()  # Reset positions without stopping time
+                if lives <= 0:
+                    save_time(current_time)  # Save time only if it's a game over
                     game_over = True
-                break
+                    break
 
-        # Drawing
         screen.fill(BLACK)
         pygame.draw.circle(screen, YELLOW, (pacman_x, pacman_y), pacman_size // 2)
         for ghost in ghosts:
             pygame.draw.rect(screen, WHITE, (ghost["x"], ghost["y"], ghost_size, ghost_size))
 
-        # Draw lives
         lives_text = font.render(f"Lives: {lives}", True, RED)
         screen.blit(lives_text, (screen_size[0] - 150, 10))
 
-        # Draw survival time
         current_time = round(time.time() - start_time, 2)
         time_text = font.render(f"Time: {current_time}", True, RED)
         screen.blit(time_text, (10, 10))
     else:
-        # Game Over screen
         screen.fill(BLACK)
         game_over_text = font.render("Game Over", True, RED)
         screen.blit(game_over_text, (screen_size[0] // 2 - 100, screen_size[1] // 2 - 100))
 
-        # Displaying attempts and global times
-        for i, t in enumerate(attempts):
-            attempt_time_text = font.render(f"Your {i + 1} Time: {t}", True, WHITE)
-            screen.blit(attempt_time_text, (screen_size[0] // 4 - 100, screen_size[1] // 2 + i * 30))
+        your_time_text = font.render(f"Your Time: {current_time}", True, WHITE)
+        screen.blit(your_time_text, (100, screen_size[1] // 2))
 
-        best_times = load_times()[:3]
+        best_times = load_times()
         for i, t in enumerate(best_times):
             best_time_text = font.render(f"Global Place {i + 1}: {t}", True, WHITE)
-            screen.blit(best_time_text, (3 * screen_size[0] // 4 - 100, screen_size[1] // 2 + i * 30))
+            screen.blit(best_time_text, (screen_size[0] - 300, screen_size[1] // 2 + i * 30))
 
-        # Draw Restart button
         if draw_button("Restart", (screen_size[0] // 2 - 75, screen_size[1] // 2 + 150), (150, 50), GREEN, WHITE, pygame.mouse.get_pressed()):
             game_over = False
             lives = initial_lives
-            attempts = []
             reset_positions()
 
     pygame.display.flip()
