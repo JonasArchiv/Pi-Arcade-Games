@@ -137,46 +137,52 @@ def move_player(direction):
 def main_game_loop():
     global player_pos, lives, game_over, start_time, elapsed_time, top_scores, ghost_directions, joystick_enabled
 
-    restart_button_rect = pygame.Rect(10, 100, 150, 50)
+    restart_button_rect = pygame.Rect(screen_size[0] // 2 - 75, screen_size[1] - 150, 150, 50)
     restart_text = font.render("Restart", True, WHITE)
+
+    exit_button_rect = pygame.Rect(screen_size[0] // 2 - 75, screen_size[1] - 80, 150, 50)
+    exit_text = font.render("Exit", True, WHITE)
 
     running = True
     while running:
         screen.fill(BLACK)
 
+        # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    move_player('UP')
-                elif event.key == pygame.K_DOWN:
-                    move_player('DOWN')
-                elif event.key == pygame.K_LEFT:
-                    move_player('LEFT')
-                elif event.key == pygame.K_RIGHT:
-                    move_player('RIGHT')
-            elif event.type == pygame.KEYUP:
-                if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
-                    direction = None
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    mouse_pos = event.pos
-                    if restart_button_rect.collidepoint(mouse_pos):
-                        initialize_game()
-            elif event.type == pygame.JOYBUTTONDOWN:
-                joystick_enabled = True
-            elif event.type == pygame.JOYAXISMOTION:
-                if event.axis == 0 and event.value > 0.5:  # Joystick moved right
-                    move_player('RIGHT')
-                elif event.axis == 0 and event.value < -0.5:  # Joystick moved left
-                    move_player('LEFT')
-                elif event.axis == 1 and event.value > 0.5:  # Joystick moved down
-                    move_player('DOWN')
-                elif event.axis == 1 and event.value < -0.5:  # Joystick moved up
-                    move_player('UP')
-            elif event.type == pygame.JOYBUTTONUP:
-                joystick_enabled = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                if restart_button_rect.collidepoint(mouse_pos):
+                    initialize_game()
+                elif exit_button_rect.collidepoint(mouse_pos):
+                    running = False
+
+        # Handle player movement
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_UP]:
+            move_player('UP')
+        elif keys[pygame.K_DOWN]:
+            move_player('DOWN')
+        elif keys[pygame.K_LEFT]:
+            move_player('LEFT')
+        elif keys[pygame.K_RIGHT]:
+            move_player('RIGHT')
+
+        # Handle joystick movement
+        if joystick_enabled:
+            joystick = pygame.joystick.Joystick(0)
+            joystick.init()
+            axis_horizontal = joystick.get_axis(0)
+            axis_vertical = joystick.get_axis(1)
+            if axis_horizontal > 0.5:
+                move_player('RIGHT')
+            elif axis_horizontal < -0.5:
+                move_player('LEFT')
+            if axis_vertical > 0.5:
+                move_player('DOWN')
+            elif axis_vertical < -0.5:
+                move_player('UP')
 
         if not game_over:
             # Update ghosts (move towards player using shortest path or random movement)
@@ -224,6 +230,11 @@ def main_game_loop():
             screen.blit(restart_text, (restart_button_rect.centerx - restart_text.get_width() // 2,
                                        restart_button_rect.centery - restart_text.get_height() // 2))
 
+            # Render exit button
+            pygame.draw.rect(screen, BLUE, exit_button_rect)
+            screen.blit(exit_text, (exit_button_rect.centerx - exit_text.get_width() // 2,
+                                    exit_button_rect.centery - exit_text.get_height() // 2))
+
             # Update timer and display elapsed time
             if start_time == 0:
                 start_time = time.time()
@@ -242,7 +253,7 @@ def main_game_loop():
                 # Add current score to top scores
                 top_scores.append(elapsed_time)
                 # Sort scores and keep top 5
-                top_scores.sort()
+                top_scores.sort(reverse=True)
                 top_scores = top_scores[:5]
                 # Save scores to file
                 save_top_scores()
@@ -264,6 +275,11 @@ def main_game_loop():
             pygame.draw.rect(screen, BLUE, restart_button_rect)
             screen.blit(restart_text, (restart_button_rect.centerx - restart_text.get_width() // 2,
                                        restart_button_rect.centery - restart_text.get_height() // 2))
+
+            # Render exit button
+            pygame.draw.rect(screen, BLUE, exit_button_rect)
+            screen.blit(exit_text, (exit_button_rect.centerx - exit_text.get_width() // 2,
+                                    exit_button_rect.centery - exit_text.get_height() // 2))
 
         pygame.display.flip()
         clock.tick(10)
