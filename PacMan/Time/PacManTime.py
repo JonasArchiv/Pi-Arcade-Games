@@ -6,7 +6,7 @@ import time
 # Constants
 small_screen_size = (800, 600)
 large_screen_size = (1920, 1080)
-screen_size = large_screen_size  # Adjust as needed
+screen_size = large_screen_size
 
 # Initialize Pygame
 pygame.init()
@@ -23,31 +23,32 @@ BLACK = (0, 0, 0)
 clock = pygame.time.Clock()
 font = pygame.font.Font(None, 36)
 
-# Maze layout
+# Maze layout (larger map)
 maze = [
-    "####################",
-    "#..................#",
-    "#.###.###..###.###.#",
-    "#.#...#......#...#.#",
-    "#.#.###.####.###.#.#",
-    "#.#..............#.#",
-    "#.###.#.#.##.#.#.#.#",
-    "#.....#.#........#.#",
-    "#####.#.#####.#.#.#.",
-    "#.....#...#...#.#.#.",
-    "#.###.###.#.###.#.#.",
-    "#.#..............#.#",
-    "#.###.#.#.##.#.#.#.#",
-    "#.....#.#........#.#",
-    "#####.#.#####.#.#.#.",
-    "#...............#.#.",
-    "###################"
+    "#########################################",
+    "#.......................................#",
+    "#.###.###..###.###..###.###..###.###.###.#",
+    "#.#...#......#...#......#...#......#...#.#",
+    "#.#.###.####.###.#.####.###.####.###.#.#.#",
+    "#.#.............................#......#.#",
+    "#.###.#.#.##.#.#.###.#.#.##.#.#.##.#.#.#.#",
+    "#.....#.#......#.....#.#......#.....#.#.#.#",
+    "#####.#.#####.#.#####.#.#####.#.#####.#.#.",
+    "#.....#...#...#...#...#...#...#...#...#.#.",
+    "#.###.###.#.###.#.###.#.###.#.###.#.###.#.",
+    "#.#...................................#.#",
+    "#.###.#.#.##.#.#.###.#.#.##.#.#.##.#.#.#.#",
+    "#.....#.#......#.....#.#......#.....#.#.#.#",
+    "#####.#.#####.#.#####.#.#####.#.#####.#.#.",
+    "#...............#...............#........#",
+    "#########################################"
 ]
 
 # Game variables
 player_pos = (1, 1)  # Player starting position
 ghosts = [(14, 7), (14, 13)]  # Initial ghost positions
-direction = None  # Player's current direction
+ghost_directions = [None, None]  # Directions for each ghost
+joystick_enabled = False  # Flag to check if joystick is enabled
 lives = 3
 game_over = False
 start_time = 0
@@ -61,7 +62,7 @@ def load_top_scores():
     global top_scores
     if os.path.exists(top_scores_file):
         with open(top_scores_file, 'r') as f:
-            top_scores = [int(score.strip()) for score in f.readlines()]
+            top_scores = [float(score.strip()) for score in f.readlines()]
 
 
 # Save top scores to file
@@ -74,13 +75,13 @@ def save_top_scores():
 
 # Initialize game
 def initialize_game():
-    global player_pos, ghosts, direction, lives, game_over, start_time, elapsed_time
+    global player_pos, ghosts, ghost_directions, lives, game_over, start_time, elapsed_time
     player_pos = (1, 1)
     ghosts = [(14, 7), (14, 13)]
-    direction = None
+    ghost_directions = [None, None]
     lives = 3
     game_over = False
-    start_time = time.time()
+    start_time = 0
     elapsed_time = 0
 
 
@@ -92,9 +93,52 @@ def is_valid_move(pos):
     return False
 
 
+# Calculate distance between two points (Manhattan distance)
+def distance(pos1, pos2):
+    return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+
+
+# Find shortest path for ghost to player using BFS algorithm
+def find_shortest_path(ghost_pos, player_pos):
+    queue = [(ghost_pos, [])]
+    visited = set()
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+    while queue:
+        current, path = queue.pop(0)
+        if current == player_pos:
+            return path
+        if current in visited:
+            continue
+        visited.add(current)
+        for direction in directions:
+            next_pos = (current[0] + direction[0], current[1] + direction[1])
+            if is_valid_move(next_pos) and next_pos not in visited:
+                queue.append((next_pos, path + [direction]))
+
+    return []  # No path found
+
+
+# Move player function
+def move_player(direction):
+    global player_pos
+    x, y = player_pos
+    if direction == 'UP' and is_valid_move((x, y - 1)):
+        player_pos = (x, y - 1)
+    elif direction == 'DOWN' and is_valid_move((x, y + 1)):
+        player_pos = (x, y + 1)
+    elif direction == 'LEFT' and is_valid_move((x - 1, y)):
+        player_pos = (x - 1, y)
+    elif direction == 'RIGHT' and is_valid_move((x + 1, y)):
+        player_pos = (x + 1, y)
+
+
 # Main game loop
 def main_game_loop():
-    global player_pos, direction, lives, game_over, start_time, elapsed_time
+    global player_pos, lives, game_over, start_time, elapsed_time, top_scores, ghost_directions, joystick_enabled
+
+    restart_button_rect = pygame.Rect(10, 100, 150, 50)
+    restart_text = font.render("Restart", True, WHITE)
 
     running = True
     while running:
@@ -105,51 +149,84 @@ def main_game_loop():
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
-                    direction = 'UP'
+                    move_player('UP')
                 elif event.key == pygame.K_DOWN:
-                    direction = 'DOWN'
+                    move_player('DOWN')
                 elif event.key == pygame.K_LEFT:
-                    direction = 'LEFT'
+                    move_player('LEFT')
                 elif event.key == pygame.K_RIGHT:
-                    direction = 'RIGHT'
+                    move_player('RIGHT')
+            elif event.type == pygame.KEYUP:
+                if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
+                    direction = None
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    mouse_pos = event.pos
+                    if restart_button_rect.collidepoint(mouse_pos):
+                        initialize_game()
+            elif event.type == pygame.JOYBUTTONDOWN:
+                joystick_enabled = True
+            elif event.type == pygame.JOYAXISMOTION:
+                if event.axis == 0 and event.value > 0.5:  # Joystick moved right
+                    move_player('RIGHT')
+                elif event.axis == 0 and event.value < -0.5:  # Joystick moved left
+                    move_player('LEFT')
+                elif event.axis == 1 and event.value > 0.5:  # Joystick moved down
+                    move_player('DOWN')
+                elif event.axis == 1 and event.value < -0.5:  # Joystick moved up
+                    move_player('UP')
+            elif event.type == pygame.JOYBUTTONUP:
+                joystick_enabled = False
 
         if not game_over:
-            # Update player position
-            if direction == 'UP':
-                new_pos = (player_pos[0], player_pos[1] - 1)
-            elif direction == 'DOWN':
-                new_pos = (player_pos[0], player_pos[1] + 1)
-            elif direction == 'LEFT':
-                new_pos = (player_pos[0] - 1, player_pos[1])
-            elif direction == 'RIGHT':
-                new_pos = (player_pos[0] + 1, player_pos[1])
-            else:
-                new_pos = player_pos
-
-            if is_valid_move(new_pos):
-                player_pos = new_pos
-
-            # Update ghosts (basic random movement)
+            # Update ghosts (move towards player using shortest path or random movement)
             for i, ghost in enumerate(ghosts):
-                x, y = ghost
-                dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
-                if is_valid_move((x + dx, y + dy)):
-                    ghosts[i] = (x + dx, y + dy)
+                if random.randint(1, 10) <= 8:  # 80% chance to move towards player
+                    path = find_shortest_path(ghost, player_pos)
+                    if path:
+                        dx, dy = path[0]
+                        if is_valid_move((ghost[0] + dx, ghost[1] + dy)):
+                            ghosts[i] = (ghost[0] + dx, ghost[1] + dy)
+                            ghost_directions[i] = (dx, dy)
+                else:
+                    dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
+                    if is_valid_move((ghost[0] + dx, ghost[1] + dy)):
+                        ghosts[i] = (ghost[0] + dx, ghost[1] + dy)
+                        ghost_directions[i] = (dx, dy)
+
+            # Check if player collides with ghosts
+            for ghost in ghosts:
+                if player_pos == ghost:
+                    lives -= 1
+                    # If the player collides with a ghost, move player to a valid starting position
+                    possible_start_positions = [(1, 1), (1, 16), (15, 1), (15, 16)]
+                    new_player_pos = random.choice(possible_start_positions)
+                    while not is_valid_move(new_player_pos):
+                        new_player_pos = random.choice(possible_start_positions)
+                    player_pos = new_player_pos
+                    break  # Stop checking further collisions
 
             # Render maze
             for y, line in enumerate(maze):
                 for x, char in enumerate(line):
                     color = WHITE if char == '.' else BLUE if char == '#' else BLACK
-                    pygame.draw.rect(screen, color, (x * 40, y * 40, 40, 40))
+                    pygame.draw.rect(screen, color, (x * 40 + 100, y * 40 + 100, 40, 40))
 
             # Render player
-            pygame.draw.circle(screen, YELLOW, (player_pos[0] * 40 + 20, player_pos[1] * 40 + 20), 15)
+            pygame.draw.circle(screen, YELLOW, (player_pos[0] * 40 + 120, player_pos[1] * 40 + 120), 15)
 
             # Render ghosts
-            for ghost in ghosts:
-                pygame.draw.circle(screen, BLUE, (ghost[0] * 40 + 20, ghost[1] * 40 + 20), 15)
+            for i, ghost in enumerate(ghosts):
+                pygame.draw.circle(screen, BLUE, (ghost[0] * 40 + 120, ghost[1] * 40 + 120), 15)
+
+            # Render restart button
+            pygame.draw.rect(screen, BLUE, restart_button_rect)
+            screen.blit(restart_text, (restart_button_rect.centerx - restart_text.get_width() // 2,
+                                       restart_button_rect.centery - restart_text.get_height() // 2))
 
             # Update timer and display elapsed time
+            if start_time == 0:
+                start_time = time.time()
             current_time = time.time()
             elapsed_time = current_time - start_time
             time_text = font.render(f"Time: {int(elapsed_time)}", True, WHITE)
@@ -183,11 +260,10 @@ def main_game_loop():
                 score_text = font.render(f"{i + 1}. {int(score)} seconds", True, WHITE)
                 screen.blit(score_text, (screen_size[0] // 2 - 100, screen_size[1] // 2 + 100 + i * 40))
 
-            # Wait for key press to restart
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        initialize_game()
+            # Render restart button
+            pygame.draw.rect(screen, BLUE, restart_button_rect)
+            screen.blit(restart_text, (restart_button_rect.centerx - restart_text.get_width() // 2,
+                                       restart_button_rect.centery - restart_text.get_height() // 2))
 
         pygame.display.flip()
         clock.tick(10)
